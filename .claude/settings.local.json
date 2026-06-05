@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import sqlite3; con = sqlite3.connect\\('/workspace/idx_scanner/data/idx.db'\\); print\\(con.execute\\('SELECT MIN\\(date\\), MAX\\(date\\), COUNT\\(DISTINCT date\\) FROM ohlcv'\\).fetchone\\(\\)\\); con.close\\(\\)\")"
+    ]
+  }
+}

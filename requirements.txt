@@ -1,0 +1,5 @@
+pandas
+numpy
+rich
+curl_cffi
+tabulate
