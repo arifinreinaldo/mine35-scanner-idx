@@ -12,6 +12,7 @@ from indicators import add_indicators
 from score import run_scoring
 
 console = Console()
+plain_console = Console(no_color=True, highlight=False)
 
 # Cut-loss buffer: if today's low is within 3% of close, use ATR-based stop instead
 MIN_STOP_PCT = 0.05   # minimum 5% cut-loss distance for breakouts
@@ -141,7 +142,44 @@ def _top5(candidates: pd.DataFrame, df: pd.DataFrame, label: str,
         _print_pick(rank, row, hist, brief, prefix)
 
 
-def main(fetch: bool = False, days_back: int = 5) -> None:
+def _plain_line(rank, row, hist, passed, prefix):
+    """Single compact line for ntfy / plain output."""
+    ticker = row["ticker"]
+    chg    = row["change_pct"]
+    mark   = "★" if passed else " "
+
+    if prefix == "e_":
+        entry, exit_p, cut_loss = _levels_exhaustion(row, hist)
+        arrow = "↓"
+    else:
+        entry, exit_p, cut_loss = _levels_breakout(row, hist)
+        arrow = "↑"
+
+    rr = _rr(entry, exit_p, cut_loss, prefix == "e_")
+    return (f"{mark}{rank}. {ticker} {chg:+.1f}% | "
+            f"Entry {entry:,.0f} | Exit{arrow} {exit_p:,.0f} | CL {cut_loss:,.0f} | R/R {rr:.1f}x")
+
+
+def plain_output(result: dict, df: pd.DataFrame) -> str:
+    """Plain text top 5 — suitable for ntfy notification."""
+    lines = [f"IDX Top 5 — {result['date']} (universe: {result['universe_size']})"]
+
+    for label, candidates, prefix in [
+        ("BREAKOUT",   result["breakouts"],  "b_"),
+        ("EXHAUSTION", result["exhaustion"], "e_"),
+    ]:
+        lines.append(f"\n{label}:")
+        passed = candidates[candidates["passed"]].head(5)
+        rest   = candidates[~candidates["passed"]].head(5 - len(passed)) if len(passed) < 5 else pd.DataFrame()
+        picks  = pd.concat([passed, rest])
+        for rank, (_, row) in enumerate(picks.iterrows(), 1):
+            hist = df[df["ticker"] == row["ticker"]].sort_values("date")
+            lines.append(_plain_line(rank, row, hist, row.get("passed", False), prefix))
+
+    return "\n".join(lines)
+
+
+def main(fetch: bool = False, days_back: int = 5, plain: bool = False) -> None:
     if fetch:
         console.print("[bold]Fetching latest data…[/bold]")
         backfill(days_back)
@@ -153,8 +191,12 @@ def main(fetch: bool = False, days_back: int = 5) -> None:
 
     df     = _build_df(df_raw)
     result = run_scoring(df)
-    briefs = generate_briefs(result, df)
 
+    if plain:
+        print(plain_output(result, df))
+        return
+
+    briefs = generate_briefs(result, df)
     console.rule(f"[bold]IDX Top 5 — {result['date']}  (universe: {result['universe_size']})[/bold]")
     _top5(result["breakouts"],  df, "Breakout",  briefs, "b_")
     _top5(result["exhaustion"], df, "Exhaustion", briefs, "e_")
@@ -164,5 +206,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Top 5 conviction picks with entry/exit/cut-loss")
     ap.add_argument("--fetch",     action="store_true", help="Fetch latest data first")
     ap.add_argument("--days-back", type=int, default=5)
+    ap.add_argument("--plain",     action="store_true", help="Plain text output (no colors, for ntfy)")
     args = ap.parse_args()
-    main(args.fetch, args.days_back)
+    main(args.fetch, args.days_back, args.plain)

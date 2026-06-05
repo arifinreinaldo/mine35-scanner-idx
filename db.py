@@ -112,3 +112,14 @@ def latest_date_in_db() -> str | None:
         cur = con.execute("SELECT MAX(date) FROM ohlcv")
         row = cur.fetchone()
         return row[0] if row and row[0] else None
+
+
+def trim_old_data(keep_days: int = 100) -> int:
+    """Delete rows older than keep_days. Returns number of rows deleted."""
+    from datetime import date, timedelta
+    cutoff = (date.today() - timedelta(days=keep_days)).isoformat()
+    with connect() as con:
+        cur = con.execute("DELETE FROM ohlcv WHERE date < ?", (cutoff,))
+        rows = cur.rowcount
+        con.execute("DELETE FROM fetch_log WHERE date < ?", (cutoff,))
+    return rows
